@@ -18,6 +18,10 @@ TEXT = {
         "tab_highest_hero_power": "최강 영웅 전투력 (Top 100)",
         "tab_enemy_kills": "적 처치 (Top 100)",
 
+        "tab_total_hero_power_mobile": "총영투",
+        "tab_highest_hero_power_mobile": "최강영웅",
+        "tab_enemy_kills_mobile": "적처치",
+
         "total_hero_power": "총 영웅 전투력",
         "highest_hero_power": "최강 영웅 전투력",
         "enemy_kills": "적 처치",
@@ -112,6 +116,10 @@ TEXT = {
         "tab_highest_hero_power": "Highest Hero Power (Top 100)",
         "tab_enemy_kills": "Enemy Kills (Top 100)",
 
+        "tab_total_hero_power_mobile": "Hero Power",
+        "tab_highest_hero_power_mobile": "Hero",
+        "tab_enemy_kills_mobile": "Kills",
+
         "total_hero_power": "Total Hero Power",
         "highest_hero_power": "Highest Hero Power",
         "enemy_kills": "Enemy Kills",
@@ -196,30 +204,71 @@ TEXT = {
     }
 }
 
-st.set_page_config(page_title=TEXT["ko"]["page_title"], layout="wide")
+st.set_page_config(page_title=TEXT["en"]["page_title"], layout="wide")
 
 st.markdown("""
 <style>
 html, body, [class*="css"] {
     font-size: 18px !important;
 }
+
 [data-testid="stDataFrame"] {
     font-size: 18px !important;
 }
+
 h1 {
     font-size: 34px !important;
 }
+
 h2, h3 {
     font-size: 25px !important;
 }
+
 .filter-title {
     font-size: 18px;
     font-weight: 600;
     margin-bottom: 0.5rem;
 }
+
+[data-baseweb="tag"] {
+    background-color: #FF6B57 !important;
+    border: 1px solid #FF6B57 !important;
+    border-radius: 999px !important;
+}
+
+[data-baseweb="tag"] span {
+    color: white !important;
+    font-weight: 700 !important;
+}
+
+[data-baseweb="tag"] svg {
+    fill: white !important;
+}
+
+@media (max-width: 768px) {
+    html, body, [class*="css"] {
+        font-size: 14px !important;
+    }
+
+    [data-testid="stDataFrame"] {
+        font-size: 13px !important;
+    }
+
+    h1 {
+        font-size: 24px !important;
+    }
+
+    h2, h3 {
+        font-size: 20px !important;
+    }
+
+    .filter-title {
+        font-size: 14px !important;
+        line-height: 1.35;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
-
 
 lang = st.sidebar.selectbox(
     TEXT["en"]["language"],
@@ -227,6 +276,12 @@ lang = st.sidebar.selectbox(
     index=0,
     format_func=lambda x: "English" if x == "en" else "한국어"
 )
+
+is_mobile = st.query_params.get("mobile", "0") == "1"
+
+CHART_HEIGHT = 420 if is_mobile else 650
+TABLE_HEIGHT = 420 if is_mobile else 650
+PIE_HEIGHT = 300 if is_mobile else 360
 
 
 def t(key):
@@ -642,8 +697,8 @@ def render_metric_pie_chart(summary_df, value_col, title, value_title, value_for
     chart = (
         alt.Chart(pie_df)
         .mark_arc(
-            innerRadius=45,
-            outerRadius=155
+            innerRadius=45 if not is_mobile else 35,
+            outerRadius=155 if not is_mobile else 120
         )
         .encode(
             theta=alt.Theta(
@@ -654,7 +709,8 @@ def render_metric_pie_chart(summary_df, value_col, title, value_title, value_for
                 "alliance_name:N",
                 title=t("alliance"),
                 sort=sort_order,
-                scale=rank_color_scale
+                scale=rank_color_scale,
+                legend=None if is_mobile else alt.Legend()
             ),
             order=alt.Order(
                 f"{value_col}:Q",
@@ -667,7 +723,7 @@ def render_metric_pie_chart(summary_df, value_col, title, value_title, value_for
                 alt.Tooltip("member_count:Q", title=t("member_count")),
             ]
         )
-        .properties(height=360)
+        .properties(height=PIE_HEIGHT)
     )
 
     st.altair_chart(
@@ -704,7 +760,7 @@ def render_metric_bar_chart(summary_df, metric_col, title, x_title, value_format
                 alt.Tooltip("value_ratio_%:Q", title=t("ratio"), format=".2f"),
             ]
         )
-        .properties(height=360)
+        .properties(height=420 if is_mobile else 360)
         .interactive()
     )
 
@@ -800,30 +856,32 @@ def render_timeseries_line_chart(ts_df, title, chart_type):
             "normalized_player_name:N",
             title=t("player"),
             sort=player_order,
-            scale=color_scale
+            scale=color_scale,
+            legend=None if is_mobile else alt.Legend()
         ),
         tooltip=tooltip_cols
     )
 
-    line = base.mark_line(strokeWidth=4)
+    line = base.mark_line(strokeWidth=3 if is_mobile else 4)
 
     points = base.mark_point(
         filled=True,
-        size=220
+        size=140 if is_mobile else 220
     ).encode(
         shape=alt.Shape(
             "normalized_player_name:N",
             title=t("marker"),
             sort=player_order,
-            scale=shape_scale
+            scale=shape_scale,
+            legend=None if is_mobile else alt.Legend()
         )
     )
 
     labels = base.mark_text(
         align="center",
         baseline="bottom",
-        dy=-12,
-        fontSize=13,
+        dy=-10 if is_mobile else -12,
+        fontSize=10 if is_mobile else 13,
         fontWeight="bold"
     ).encode(
         text="label_text:N"
@@ -831,7 +889,7 @@ def render_timeseries_line_chart(ts_df, title, chart_type):
 
     chart = (
         (line + points + labels)
-        .properties(height=650)
+        .properties(height=CHART_HEIGHT)
         .interactive()
     )
 
@@ -890,6 +948,21 @@ def load_all_players():
     return df["normalized_player_name"].dropna().tolist()
 
 
+def highlight_latest_selected_users(row):
+    if (
+        "normalized_player_name" in row.index
+        and "snapshot_date" in row.index
+        and row["normalized_player_name"] in highlight_players
+        and row["snapshot_date"] == latest_highlight_dates.get(row["normalized_player_name"])
+    ):
+        return [
+            "background-color: #fff3b0; font-weight: bold;"
+            for _ in row
+        ]
+
+    return ["" for _ in row]
+
+
 def highlight_selected_users(row):
     if (
         "normalized_player_name" in row.index
@@ -930,7 +1003,7 @@ def render_scatter_chart(df, title, compare_date):
 
     chart = (
         alt.Chart(df)
-        .mark_circle(size=80, opacity=0.75)
+        .mark_circle(size=60 if is_mobile else 80, opacity=0.75)
         .encode(
             x=alt.X(
                 "rank_no:Q",
@@ -942,10 +1015,14 @@ def render_scatter_chart(df, title, compare_date):
                 title=title,
                 scale=alt.Scale(zero=False)
             ),
-            color=alt.Color("alliance_name:N", title=t("alliance")),
+            color=alt.Color(
+                "alliance_name:N",
+                title=t("alliance"),
+                legend=None if is_mobile else alt.Legend()
+            ),
             tooltip=tooltip_cols
         )
-        .properties(height=650)
+        .properties(height=CHART_HEIGHT)
         .interactive()
     )
 
@@ -1126,7 +1203,10 @@ def render_server_summary_page():
         unsafe_allow_html=True
     )
 
-    kpi1, kpi2, kpi3 = st.columns(3)
+    if is_mobile:
+        kpi1, kpi2, kpi3 = st.columns(1)
+    else:
+        kpi1, kpi2, kpi3 = st.columns(3)
 
     kpi1.metric(
         t("total_hero_power"),
@@ -1161,9 +1241,7 @@ def render_server_summary_page():
         ]
     ]
 
-    chart_col1, chart_col2, chart_col3 = st.columns(3)
-
-    with chart_col1:
+    if is_mobile:
         render_metric_pie_chart(
             total_summary,
             "total_value",
@@ -1172,7 +1250,6 @@ def render_server_summary_page():
             ".1f"
         )
 
-    with chart_col2:
         render_metric_pie_chart(
             highest_summary,
             "total_value",
@@ -1181,7 +1258,6 @@ def render_server_summary_page():
             ".1f"
         )
 
-    with chart_col3:
         render_metric_pie_chart(
             kills_summary,
             "total_value",
@@ -1189,11 +1265,40 @@ def render_server_summary_page():
             t("enemy_kills_short"),
             ","
         )
+    else:
+        chart_col1, chart_col2, chart_col3 = st.columns(3)
+
+        with chart_col1:
+            render_metric_pie_chart(
+                total_summary,
+                "total_value",
+                t("total_hero_power_ratio_title"),
+                t("total_hero_power_short"),
+                ".1f"
+            )
+
+        with chart_col2:
+            render_metric_pie_chart(
+                highest_summary,
+                "total_value",
+                t("highest_hero_power_ratio_title"),
+                t("highest_hero_power_short"),
+                ".1f"
+            )
+
+        with chart_col3:
+            render_metric_pie_chart(
+                kills_summary,
+                "total_value",
+                t("enemy_kills_ratio_title"),
+                t("enemy_kills_short"),
+                ","
+            )
 
     st.dataframe(
         display_df,
         use_container_width=True,
-        height=380,
+        height=380 if not is_mobile else 420,
         column_config={
             "alliance_name": st.column_config.TextColumn(t("alliance")),
 
@@ -1297,25 +1402,42 @@ def render_summary_page(title, table_name, value_column):
         compare_date
     )
 
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
+    if is_mobile:
         st.dataframe(
             display_df.style.apply(
                 highlight_selected_users,
                 axis=1
             ),
             use_container_width=True,
-            height=650,
+            height=TABLE_HEIGHT,
             column_config=get_column_config(display_df)
         )
 
-    with col2:
         render_scatter_chart(
             df,
             title,
             compare_date
         )
+    else:
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            st.dataframe(
+                display_df.style.apply(
+                    highlight_selected_users,
+                    axis=1
+                ),
+                use_container_width=True,
+                height=TABLE_HEIGHT,
+                column_config=get_column_config(display_df)
+            )
+
+        with col2:
+            render_scatter_chart(
+                df,
+                title,
+                compare_date
+            )
 
 
 def render_user_detail_page(title, table_name, value_column):
@@ -1387,7 +1509,7 @@ def render_user_detail_page(title, table_name, value_column):
             t("top10"),
             t("top20")
         ],
-        horizontal=True,
+        horizontal=not is_mobile,
         key=f"{table_name}_detail_select_mode"
     )
 
@@ -1465,18 +1587,30 @@ def render_user_detail_page(title, table_name, value_column):
         ascending=[False, True]
     ).reset_index(drop=True)
 
+    global latest_highlight_dates
+
+    latest_highlight_dates = (
+        display_ts_df[
+            display_ts_df["normalized_player_name"].isin(highlight_players)
+        ]
+        .groupby("normalized_player_name")["snapshot_date"]
+        .max()
+        .to_dict()
+    )
 
     st.dataframe(
         display_ts_df.style.apply(
-            highlight_selected_users,
+            highlight_latest_selected_users,
             axis=1
         ),
         use_container_width=True,
+        height=TABLE_HEIGHT,
         column_config=get_column_config(display_ts_df)
     )
 
 
 BESTIE_KEYWORDS = ["juhong", "kaisar", "dobby", "dori"]
+
 
 def search_players_by_keyword(keyword):
     keyword = keyword.strip().lower()
@@ -1583,6 +1717,7 @@ def search_players_by_keyword(keyword):
         .tolist()
     )
 
+
 menu = st.sidebar.radio(
     t("menu"),
     [
@@ -1590,16 +1725,17 @@ menu = st.sidebar.radio(
         t("player_analysis")
     ]
 )
+
 HIGHLIGHT_COMMANDS = [
     "migration",
     "tiki",
     "ryt",
     "fire",
 ]
+
 all_players = load_all_players()
 
 highlight_options = HIGHLIGHT_COMMANDS + all_players
-
 
 raw_highlight_players = st.sidebar.multiselect(
     t("highlight_users"),
@@ -1608,6 +1744,7 @@ raw_highlight_players = st.sidebar.multiselect(
     accept_new_options=True,
     help=t("highlight_help")
 )
+
 highlight_players = []
 
 for item in raw_highlight_players:
@@ -1621,12 +1758,22 @@ for item in raw_highlight_players:
                 highlight_players.append(player)
 
 
-tab0, tab1, tab2, tab3 = st.tabs([
-    t("tab_server_summary"),
-    t("tab_total_hero_power"),
-    t("tab_highest_hero_power"),
-    t("tab_enemy_kills")
-])
+if is_mobile:
+    tab_names = [
+        t("tab_server_summary"),
+        t("tab_total_hero_power_mobile"),
+        t("tab_highest_hero_power_mobile"),
+        t("tab_enemy_kills_mobile")
+    ]
+else:
+    tab_names = [
+        t("tab_server_summary"),
+        t("tab_total_hero_power"),
+        t("tab_highest_hero_power"),
+        t("tab_enemy_kills")
+    ]
+
+tab0, tab1, tab2, tab3 = st.tabs(tab_names)
 
 with tab0:
     if menu == t("server_analysis"):
