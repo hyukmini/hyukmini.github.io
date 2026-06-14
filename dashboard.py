@@ -1478,7 +1478,6 @@ def render_user_detail_page(title, table_name, value_column):
 
 BESTIE_KEYWORDS = ["juhong", "kaisar", "dobby", "dori"]
 
-
 def search_players_by_keyword(keyword):
     keyword = keyword.strip().lower()
 
@@ -1504,6 +1503,59 @@ def search_players_by_keyword(keyword):
         )
 
     else:
+        df = read_sql("""
+            WITH all_data AS (
+                SELECT server_id, snapshot_date, player_name, alliance_name
+                FROM total_hero_power
+
+                UNION ALL
+
+                SELECT server_id, snapshot_date, player_name, alliance_name
+                FROM highest_hero_power
+
+                UNION ALL
+
+                SELECT server_id, snapshot_date, player_name, alliance_name
+                FROM enemy_kills
+            ),
+            latest_date AS (
+                SELECT MAX(snapshot_date) AS snapshot_date
+                FROM all_data
+            ),
+            latest_data AS (
+                SELECT *
+                FROM all_data
+                WHERE snapshot_date = (
+                    SELECT snapshot_date
+                    FROM latest_date
+                )
+            )
+            SELECT DISTINCT
+                COALESCE(a.normalized_player_name, x.player_name) AS normalized_player_name
+            FROM latest_data x
+            LEFT JOIN player_alias a
+                ON a.id = (
+                    SELECT a2.id
+                    FROM player_alias a2
+                    WHERE a2.server_id = x.server_id
+                      AND a2.player_name = x.player_name
+                      AND a2.updated_date <= x.snapshot_date
+                    ORDER BY a2.updated_date DESC, a2.id DESC
+                    LIMIT 1
+                )
+            WHERE LOWER(x.alliance_name) LIKE ?
+            ORDER BY normalized_player_name
+        """, [f"%{keyword}%"])
+
+        alliance_players = (
+            df["normalized_player_name"]
+            .dropna()
+            .tolist()
+        )
+
+        if alliance_players:
+            return alliance_players
+
         keywords = [keyword]
         search_column = "player_name"
 
@@ -1531,7 +1583,6 @@ def search_players_by_keyword(keyword):
         .tolist()
     )
 
-
 menu = st.sidebar.radio(
     t("menu"),
     [
@@ -1539,17 +1590,24 @@ menu = st.sidebar.radio(
         t("player_analysis")
     ]
 )
-
+HIGHLIGHT_COMMANDS = [
+    "migration",
+    "tiki",
+    "ryt",
+    "fire",
+]
 all_players = load_all_players()
+
+highlight_options = HIGHLIGHT_COMMANDS + all_players
+
 
 raw_highlight_players = st.sidebar.multiselect(
     t("highlight_users"),
-    options=all_players,
+    options=highlight_options,
     default=[],
     accept_new_options=True,
     help=t("highlight_help")
 )
-
 highlight_players = []
 
 for item in raw_highlight_players:
